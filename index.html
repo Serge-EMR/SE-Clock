@@ -1,0 +1,1393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Atomic World Clock — Live Time Zones</title>
+    <meta name="description" content="An interactive world clock synced with atomic time servers. View live times across major cities, add custom regions, and track DST changes worldwide.">
+    <meta property="og:title" content="SE Clock">
+    <meta property="og:description" content="Interactive live atomic-synced clocks for cities worldwide.">
+    <meta property="og:type" content="website">
+
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'self';
+                   img-src 'self' https://upload.wikimedia.org;
+                   connect-src 'self' https://worldtimeapi.org https://timeapi.io;
+                   style-src 'self' 'unsafe-inline';
+                   script-src 'self' 'unsafe-inline';
+                   font-src 'self';">
+
+    <style>
+/* ============================================
+   Atomic World Clock — styles.css
+   ============================================ */
+
+/* --- Theme Variables --- */
+:root {
+    --bg-color: #0f172a;
+    --card-bg: #1e293b;
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --accent: #38bdf8;
+    --accent-hover: #0284c7;
+    --marker-bg: rgba(15, 23, 42, 0.9);
+    --map-bg: #0b1120;
+    --border-color: #475569;
+    --danger: #f43f5e;
+    --dst-color: #fbbf24;
+    --success: #4ade80;
+}
+
+[data-theme="light"] {
+    --bg-color: #f1f5f9;
+    --card-bg: #ffffff;
+    --text-main: #0f172a;
+    --text-muted: #475569;
+    --accent: #0284c7;
+    --accent-hover: #0369a1;
+    --marker-bg: rgba(255, 255, 255, 0.95);
+    --map-bg: #e2e8f0;
+    --border-color: #cbd5e1;
+    --danger: #e11d48;
+    --dst-color: #f59e0b;
+    --success: #22c55e;
+}
+
+/* --- Base --- */
+body {
+    margin: 0;
+    /* Increased bottom padding so the fixed footer doesn't cover content at the bottom */
+    padding: 2rem 2rem 6rem 2rem; 
+    font-family: system-ui, -apple-system, sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    box-sizing: border-box;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+/* --- Panel --- */
+.panel {
+    background-color: var(--card-bg);
+    padding: 1.5rem 2rem;
+    border-radius: 1rem;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+    width: 100%;
+    max-width: 1000px;
+    box-sizing: border-box;
+    transition: background-color 0.3s;
+}
+
+[data-theme="dark"] .panel {
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+}
+
+/* --- Header --- */
+.header-top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.5rem;
+}
+
+.header-panel {
+    margin-bottom: 2rem;
+}
+
+.main-clock {
+    text-align: left;
+}
+
+.status-container {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.status-text {
+    display: flex;
+    flex-direction: column;
+}
+
+#sync-status {
+    font-size: 0.75rem;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 0.1rem;
+}
+
+#discrepancy-status {
+    font-size: 0.8rem;
+    font-style: italic;
+    color: var(--text-muted);
+}
+
+/* --- Buttons --- */
+#resync-btn,
+#theme-toggle-btn {
+    background-color: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 0.3rem 0.6rem;
+    font-size: 0.75rem;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-weight: bold;
+}
+
+#resync-btn:hover:not(:disabled),
+#theme-toggle-btn:hover {
+    background-color: var(--accent);
+    color: var(--card-bg);
+}
+
+#resync-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    border-color: var(--text-muted);
+    color: var(--text-muted);
+}
+
+/* --- Time Display --- */
+.time-display-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 0.25rem;
+}
+
+#main-time {
+    font-size: 3rem;
+    font-weight: 700;
+    line-height: 1;
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-main);
+}
+
+.dst-badge {
+    font-size: 0.8rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 1rem;
+    font-weight: bold;
+    display: none;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.dst-active {
+    background-color: var(--accent);
+    color: var(--card-bg);
+}
+
+.dst-inactive {
+    background-color: var(--text-muted);
+    color: var(--card-bg);
+}
+
+.dst-na {
+    background-color: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+    box-shadow: none;
+}
+
+.city-dst {
+    margin-top: 0.4rem;
+    font-size: 0.7rem;
+    letter-spacing: 0.5px;
+    display: none;
+}
+
+#main-date {
+    font-size: 1rem;
+    color: var(--text-muted);
+    margin-top: 0.25rem;
+}
+
+/* --- Controls --- */
+.controls {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+}
+
+.control-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.input-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 0.3rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+select,
+input {
+    padding: 0.5rem;
+    border-radius: 0.25rem;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    font-size: 0.9rem;
+    outline: none;
+    transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+}
+
+select:focus,
+input:focus {
+    border-color: var(--accent);
+}
+
+.primary-btn {
+    background-color: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 0.6rem 1rem;
+    border-radius: 0.25rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.primary-btn:hover {
+    background-color: var(--accent-hover);
+}
+
+.secondary-btn {
+    background-color: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.25rem;
+    font-weight: 600;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.secondary-btn:hover {
+    background-color: var(--accent);
+    color: var(--card-bg);
+}
+
+.danger-btn {
+    color: var(--danger);
+    border-color: var(--danger);
+}
+
+.danger-btn:hover {
+    background-color: var(--danger);
+    color: #fff;
+}
+
+/* --- Utility classes --- */
+.input-tz-main {
+    width: 280px;
+}
+
+.input-days {
+    width: 80px;
+}
+
+.input-tz-add {
+    width: 240px;
+}
+
+.hidden {
+    display: none;
+}
+
+.flex-grow {
+    flex-grow: 1;
+}
+
+/* --- Clock Grid Section --- */
+.clock-grid-container {
+    width: 100%;
+    max-width: 1000px;
+}
+
+.clock-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+    width: 100%;
+}
+
+.clock-card {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    padding: 1.5rem;
+    border-radius: 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s, box-shadow 0.2s, background-color 0.3s, border-color 0.3s, opacity 0.2s;
+    cursor: grab;
+    user-select: none;
+}
+
+.clock-card:active {
+    cursor: grabbing;
+}
+
+.clock-card.dragging {
+    opacity: 0.4;
+    transform: scale(0.98);
+}
+
+.clock-card.drag-over {
+    border: 2px dashed var(--accent);
+    background-color: rgba(56, 189, 248, 0.05);
+    transform: scale(1.02);
+}
+
+.clock-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 15px rgba(0, 0, 0, 0.15);
+    border-color: var(--accent);
+}
+
+[data-theme="dark"] .clock-card {
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .clock-card:hover {
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+}
+
+.card-remove-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1.2rem;
+    line-height: 1;
+    padding: 4px;
+    border-radius: 50%;
+    transition: color 0.2s, background-color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+}
+
+.card-remove-btn:hover {
+    color: var(--danger);
+    background-color: rgba(244, 63, 94, 0.1);
+}
+
+.city-name {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.5rem;
+    text-align: center;
+    width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.city-time {
+    font-size: 2.2rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-main);
+    line-height: 1;
+    margin-bottom: 0.5rem;
+}
+
+.city-date {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+/* --- Add Region Panel --- */
+.add-region-panel h3 {
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+    font-size: 1.2rem;
+    color: var(--text-main);
+}
+
+.form-row {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    margin-bottom: 1.5rem;
+}
+
+.form-hint {
+    font-size: 0.8rem;
+    color: var(--accent);
+    margin-bottom: 1rem;
+    display: block;
+}
+
+.data-management-row {
+    display: flex;
+    gap: 1rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border-color);
+    flex-wrap: wrap;
+}
+
+/* --- Fixed Footer --- */
+.app-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background-color: var(--card-bg);
+    border-top: 1px solid var(--border-color);
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    line-height: 1.5;
+    padding: 0.75rem;
+    box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+    transition: background-color 0.3s;
+}
+
+.app-footer p {
+    margin: 0.2rem 0;
+}
+
+.app-footer strong {
+    color: var(--accent);
+}
+    </style>
+</head>
+<body>
+
+    <div class="panel header-panel" role="banner">
+        <div class="header-top-bar">
+            <div class="status-container">
+                <div class="status-text">
+                    <div id="sync-status" role="status" aria-live="polite">Contacting Time Servers...</div>
+                    <div id="discrepancy-status" aria-live="polite">Calculating hardware offset...</div>
+                </div>
+                <button id="resync-btn" aria-label="Re-synchronize with atomic time server">↻ Re-sync Now</button>
+            </div>
+            <button id="theme-toggle-btn" aria-label="Toggle light and dark theme">🌓 Toggle Theme</button>
+        </div>
+
+        <div class="main-clock">
+            <div class="time-display-wrapper">
+                <div id="main-time" role="timer" aria-live="polite" aria-label="Current time in selected timezone">00:00:00</div>
+                <span id="main-dst-badge" class="dst-badge" aria-label="Daylight Saving Time status">DST: N/A</span>
+            </div>
+            <div id="main-date" aria-label="Current date in selected timezone">Loading Date...</div>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="timezone-select">Search Main Time Zone (Country, City, TZ)</label>
+                <div class="input-row">
+                    <input type="text" id="timezone-select" list="main-tz-list" placeholder="e.g. Japan, London..." class="input-tz-main" autocomplete="off">
+                    <datalist id="main-tz-list"></datalist>
+                    <button id="set-default-btn" class="secondary-btn" title="Set current selection as default on reload" aria-label="Save current timezone as default">Set Default</button>
+                </div>
+            </div>
+            <div class="control-group">
+                <label for="add-days">Add Days (Global)</label>
+                <input type="number" id="add-days" value="0" step="1" class="input-days" aria-label="Add or subtract days from all displayed times">
+            </div>
+        </div>
+    </div>
+
+    <div class="clock-grid-container">
+        <div id="clock-grid" class="clock-grid" aria-label="Grid of configured world clocks" role="list"></div>
+    </div>
+
+    <div class="panel add-region-panel">
+        <h3>Add New Clock</h3>
+        <span class="form-hint">Add a new city or timezone to your dashboard.</span>
+
+        <div class="form-row">
+            <div class="control-group">
+                <label for="custom-name">Display Name</label>
+                <input type="text" id="custom-name" placeholder="e.g., Berlin" maxlength="100" autocomplete="off">
+            </div>
+            <div class="control-group">
+                <label for="custom-tz">Time Zone Search (Country, City)</label>
+                <input type="text" id="custom-tz" placeholder="e.g., Germany, Berlin..." list="tz-list" class="input-tz-add" autocomplete="off">
+                <datalist id="tz-list"></datalist>
+            </div>
+            <div class="control-group" style="align-self: flex-end;">
+                <button id="add-city-btn" class="primary-btn" aria-label="Add this city to the dashboard">Add Clock</button>
+            </div>
+        </div>
+
+        <div class="data-management-row">
+            <button id="export-btn" class="secondary-btn" aria-label="Export custom cities as JSON backup">⬇ Export Custom Cities</button>
+            <button id="import-btn" class="secondary-btn" aria-label="Import cities from a JSON backup file">⬆ Import Backup</button>
+            <input type="file" id="import-file" accept=".json" class="hidden">
+            <div class="flex-grow"></div>
+            <button id="clear-btn" class="secondary-btn danger-btn" aria-label="Remove all custom cities from the map">✖ Clear Custom Cities</button>
+        </div>
+    </div>
+
+    <footer class="app-footer">
+        <p>Developed by <strong>Serge E.</strong> using Gemini / Claude AI.</p>
+        <p>Main purpose is to help in manual synching Seiko / Casio watches or any watch types.</p>
+    </footer>
+
+    <script>
+// ============================================
+// Atomic World Clock — app.js
+// ============================================
+
+(function () {
+    'use strict';
+
+    // --- Security Sanitization ---
+    function sanitizeHTML(str) {
+        if (!str) return '';
+        const temp = document.createElement('div');
+        temp.textContent = str;
+        return temp.innerHTML;
+    }
+
+    // Validates that a city ID is safe for use in element IDs (alphanumeric, dashes, underscores)
+    function sanitizeId(id) {
+        if (!id || typeof id !== 'string') return 'invalid-' + Date.now();
+        return id.replace(/[^a-zA-Z0-9_-]/g, '');
+    }
+
+    // --- Theme Initialization ---
+    const themeToggleBtn = document.getElementById('theme-toggle-btn');
+    let currentTheme = localStorage.getItem('atomicClockTheme') || 'dark';
+    document.documentElement.setAttribute('data-theme', currentTheme);
+
+    themeToggleBtn.addEventListener('click', () => {
+        currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', currentTheme);
+        localStorage.setItem('atomicClockTheme', currentTheme);
+    });
+
+    // --- Smart Country Mapping ---
+    const manualCountryMap = {
+        // --- USA ---
+        "America/New_York": "USA", "America/Los_Angeles": "USA", "America/Chicago": "USA",
+        "America/Denver": "USA", "America/Phoenix": "USA", "America/Anchorage": "USA",
+        "Pacific/Honolulu": "USA", "America/Boise": "USA", "America/Indiana/Indianapolis": "USA",
+        "America/Indiana/Knox": "USA", "America/Indiana/Marengo": "USA", "America/Indiana/Petersburg": "USA",
+        "America/Indiana/Tell_City": "USA", "America/Indiana/Vevay": "USA", "America/Indiana/Vincennes": "USA",
+        "America/Indiana/Winamac": "USA", "America/Kentucky/Louisville": "USA", "America/Kentucky/Monticello": "USA",
+        "America/Detroit": "USA", "America/Menominee": "USA", "America/Nome": "USA",
+        "America/Adak": "USA", "America/Juneau": "USA", "America/Sitka": "USA",
+        "America/Yakutat": "USA", "America/North_Dakota/Beulah": "USA", "America/North_Dakota/Center": "USA",
+        "America/North_Dakota/New_Salem": "USA",
+        // --- Canada ---
+        "America/Toronto": "Canada", "America/Vancouver": "Canada", "America/Edmonton": "Canada",
+        "America/Winnipeg": "Canada", "America/Halifax": "Canada", "America/St_Johns": "Canada",
+        "America/Regina": "Canada", "America/Whitehorse": "Canada", "America/Yellowknife": "Canada",
+        "America/Iqaluit": "Canada", "America/Moncton": "Canada", "America/Thunder_Bay": "Canada",
+        "America/Dawson": "Canada", "America/Dawson_Creek": "Canada", "America/Fort_Nelson": "Canada",
+        "America/Rankin_Inlet": "Canada", "America/Resolute": "Canada", "America/Swift_Current": "Canada",
+        "America/Atikokan": "Canada", "America/Creston": "Canada", "America/Glace_Bay": "Canada",
+        "America/Goose_Bay": "Canada", "America/Inuvik": "Canada", "America/Nipigon": "Canada",
+        "America/Pangnirtung": "Canada", "America/Rainy_River": "Canada", "America/Cambridge_Bay": "Canada",
+        "America/Blanc-Sablon": "Canada",
+        // --- Mexico ---
+        "America/Mexico_City": "Mexico", "America/Cancun": "Mexico", "America/Monterrey": "Mexico",
+        "America/Merida": "Mexico", "America/Tijuana": "Mexico", "America/Hermosillo": "Mexico",
+        "America/Chihuahua": "Mexico", "America/Mazatlan": "Mexico", "America/Bahia_Banderas": "Mexico",
+        "America/Matamoros": "Mexico", "America/Ojinaga": "Mexico",
+        // --- Central America & Caribbean ---
+        "America/Guatemala": "Guatemala", "America/Belize": "Belize", "America/Costa_Rica": "Costa Rica",
+        "America/El_Salvador": "El Salvador", "America/Tegucigalpa": "Honduras", "America/Managua": "Nicaragua",
+        "America/Panama": "Panama", "America/Havana": "Cuba", "America/Jamaica": "Jamaica",
+        "America/Port-au-Prince": "Haiti", "America/Santo_Domingo": "Dominican Republic",
+        "America/Puerto_Rico": "Puerto Rico", "America/Martinique": "Martinique",
+        "America/Guadeloupe": "Guadeloupe", "America/Barbados": "Barbados",
+        "America/Port_of_Spain": "Trinidad & Tobago", "America/Curacao": "Curaçao",
+        "America/Aruba": "Aruba", "America/Grand_Turk": "Turks & Caicos",
+        "America/Cayman": "Cayman Islands", "America/Nassau": "Bahamas",
+        // --- South America ---
+        "America/Sao_Paulo": "Brazil", "America/Bahia": "Brazil", "America/Belem": "Brazil",
+        "America/Fortaleza": "Brazil", "America/Recife": "Brazil", "America/Manaus": "Brazil",
+        "America/Cuiaba": "Brazil", "America/Porto_Velho": "Brazil", "America/Boa_Vista": "Brazil",
+        "America/Campo_Grande": "Brazil", "America/Noronha": "Brazil", "America/Rio_Branco": "Brazil",
+        "America/Araguaina": "Brazil", "America/Maceio": "Brazil", "America/Santarem": "Brazil",
+        "America/Eirunepe": "Brazil",
+        "America/Argentina/Buenos_Aires": "Argentina", "America/Argentina/Cordoba": "Argentina",
+        "America/Argentina/Salta": "Argentina", "America/Argentina/Jujuy": "Argentina",
+        "America/Argentina/Tucuman": "Argentina", "America/Argentina/Catamarca": "Argentina",
+        "America/Argentina/La_Rioja": "Argentina", "America/Argentina/San_Juan": "Argentina",
+        "America/Argentina/Mendoza": "Argentina", "America/Argentina/San_Luis": "Argentina",
+        "America/Argentina/Rio_Gallegos": "Argentina", "America/Argentina/Ushuaia": "Argentina",
+        "America/Bogota": "Colombia", "America/Lima": "Peru", "America/Santiago": "Chile",
+        "America/Punta_Arenas": "Chile", "Pacific/Easter": "Chile",
+        "America/Caracas": "Venezuela", "America/Guayaquil": "Ecuador", "Pacific/Galapagos": "Ecuador",
+        "America/La_Paz": "Bolivia", "America/Asuncion": "Paraguay", "America/Montevideo": "Uruguay",
+        "America/Guyana": "Guyana", "America/Paramaribo": "Suriname", "America/Cayenne": "French Guiana",
+        "Atlantic/Stanley": "Falkland Islands",
+        // --- Europe ---
+        "Europe/London": "UK", "Europe/Paris": "France", "Europe/Berlin": "Germany",
+        "Europe/Rome": "Italy", "Europe/Madrid": "Spain", "Europe/Warsaw": "Poland",
+        "Europe/Kyiv": "Ukraine", "Europe/Stockholm": "Sweden", "Europe/Oslo": "Norway",
+        "Europe/Helsinki": "Finland", "Europe/Copenhagen": "Denmark", "Europe/Dublin": "Ireland",
+        "Europe/Amsterdam": "Netherlands", "Europe/Brussels": "Belgium", "Europe/Vienna": "Austria",
+        "Europe/Zurich": "Switzerland", "Europe/Athens": "Greece", "Europe/Lisbon": "Portugal",
+        "Europe/Istanbul": "Turkey", "Europe/Moscow": "Russia", "Europe/Bucharest": "Romania",
+        "Europe/Budapest": "Hungary", "Europe/Prague": "Czech Republic", "Europe/Sofia": "Bulgaria",
+        "Europe/Belgrade": "Serbia", "Europe/Zagreb": "Croatia", "Europe/Ljubljana": "Slovenia",
+        "Europe/Bratislava": "Slovakia", "Europe/Vilnius": "Lithuania", "Europe/Riga": "Latvia",
+        "Europe/Tallinn": "Estonia", "Europe/Luxembourg": "Luxembourg", "Europe/Malta": "Malta",
+        "Europe/Monaco": "Monaco", "Europe/Andorra": "Andorra", "Europe/Tirane": "Albania",
+        "Europe/Skopje": "North Macedonia", "Europe/Podgorica": "Montenegro",
+        "Europe/Sarajevo": "Bosnia & Herzegovina", "Europe/Chisinau": "Moldova",
+        "Europe/Minsk": "Belarus", "Europe/Gibraltar": "Gibraltar", "Europe/Kaliningrad": "Russia",
+        "Europe/Samara": "Russia", "Europe/Saratov": "Russia", "Europe/Ulyanovsk": "Russia",
+        "Europe/Volgograd": "Russia", "Europe/Kirov": "Russia", "Europe/Astrakhan": "Russia",
+        "Atlantic/Reykjavik": "Iceland", "Atlantic/Faroe": "Faroe Islands",
+        "Europe/Guernsey": "Guernsey", "Europe/Jersey": "Jersey", "Europe/Isle_of_Man": "Isle of Man",
+        "Europe/San_Marino": "San Marino", "Europe/Vatican": "Vatican City",
+        // --- Russia (Asian) ---
+        "Asia/Yekaterinburg": "Russia", "Asia/Omsk": "Russia", "Asia/Novosibirsk": "Russia",
+        "Asia/Barnaul": "Russia", "Asia/Tomsk": "Russia", "Asia/Novokuznetsk": "Russia",
+        "Asia/Krasnoyarsk": "Russia", "Asia/Irkutsk": "Russia", "Asia/Chita": "Russia",
+        "Asia/Yakutsk": "Russia", "Asia/Vladivostok": "Russia", "Asia/Sakhalin": "Russia",
+        "Asia/Magadan": "Russia", "Asia/Kamchatka": "Russia", "Asia/Anadyr": "Russia",
+        "Asia/Srednekolymsk": "Russia", "Asia/Ust-Nera": "Russia", "Asia/Khandyga": "Russia",
+        // --- East Asia ---
+        "Asia/Tokyo": "Japan", "Asia/Shanghai": "China", "Asia/Chongqing": "China",
+        "Asia/Harbin": "China", "Asia/Urumqi": "China", "Asia/Seoul": "South Korea",
+        "Asia/Pyongyang": "North Korea", "Asia/Taipei": "Taiwan", "Asia/Hong_Kong": "Hong Kong",
+        "Asia/Macau": "Macau", "Asia/Ulaanbaatar": "Mongolia", "Asia/Hovd": "Mongolia",
+        "Asia/Choibalsan": "Mongolia",
+        // --- Southeast Asia ---
+        "Asia/Manila": "Philippines", "Asia/Jakarta": "Indonesia", "Asia/Makassar": "Indonesia",
+        "Asia/Jayapura": "Indonesia", "Asia/Pontianak": "Indonesia",
+        "Asia/Bangkok": "Thailand", "Asia/Ho_Chi_Minh": "Vietnam",
+        "Asia/Kuala_Lumpur": "Malaysia", "Asia/Kuching": "Malaysia",
+        "Asia/Singapore": "Singapore", "Asia/Yangon": "Myanmar",
+        "Asia/Phnom_Penh": "Cambodia", "Asia/Vientiane": "Laos",
+        "Asia/Brunei": "Brunei", "Asia/Dili": "Timor-Leste",
+        // --- South Asia ---
+        "Asia/Kolkata": "India", "Asia/Karachi": "Pakistan", "Asia/Dhaka": "Bangladesh",
+        "Asia/Colombo": "Sri Lanka", "Asia/Kathmandu": "Nepal", "Asia/Thimphu": "Bhutan",
+        "Indian/Maldives": "Maldives",
+        // --- Central Asia ---
+        "Asia/Almaty": "Kazakhstan", "Asia/Aqtau": "Kazakhstan", "Asia/Aqtobe": "Kazakhstan",
+        "Asia/Atyrau": "Kazakhstan", "Asia/Oral": "Kazakhstan", "Asia/Qostanay": "Kazakhstan",
+        "Asia/Qyzylorda": "Kazakhstan",
+        "Asia/Tashkent": "Uzbekistan", "Asia/Samarkand": "Uzbekistan",
+        "Asia/Bishkek": "Kyrgyzstan", "Asia/Dushanbe": "Tajikistan",
+        "Asia/Ashgabat": "Turkmenistan",
+        // --- Middle East ---
+        "Asia/Dubai": "UAE", "Asia/Riyadh": "Saudi Arabia", "Asia/Tehran": "Iran",
+        "Asia/Baghdad": "Iraq", "Asia/Jerusalem": "Israel", "Asia/Beirut": "Lebanon",
+        "Asia/Damascus": "Syria", "Asia/Amman": "Jordan", "Asia/Kuwait": "Kuwait",
+        "Asia/Qatar": "Qatar", "Asia/Bahrain": "Bahrain", "Asia/Muscat": "Oman",
+        "Asia/Aden": "Yemen", "Asia/Tbilisi": "Georgia", "Asia/Yerevan": "Armenia",
+        "Asia/Baku": "Azerbaijan", "Asia/Nicosia": "Cyprus", "Asia/Famagusta": "Cyprus",
+        "Asia/Kabul": "Afghanistan",
+        // --- Africa ---
+        "Africa/Cairo": "Egypt", "Africa/Johannesburg": "South Africa",
+        "Africa/Lagos": "Nigeria", "Africa/Nairobi": "Kenya",
+        "Africa/Casablanca": "Morocco", "Africa/Addis_Ababa": "Ethiopia",
+        "Africa/Algiers": "Algeria", "Africa/Tunis": "Tunisia", "Africa/Tripoli": "Libya",
+        "Africa/Khartoum": "Sudan", "Africa/Juba": "South Sudan",
+        "Africa/Accra": "Ghana", "Africa/Abidjan": "Ivory Coast",
+        "Africa/Dakar": "Senegal", "Africa/Bamako": "Mali",
+        "Africa/Conakry": "Guinea", "Africa/Bissau": "Guinea-Bissau",
+        "Africa/Freetown": "Sierra Leone", "Africa/Monrovia": "Liberia",
+        "Africa/Nouakchott": "Mauritania", "Africa/Ouagadougou": "Burkina Faso",
+        "Africa/Niamey": "Niger", "Africa/Ndjamena": "Chad",
+        "Africa/Douala": "Cameroon", "Africa/Bangui": "Central African Republic",
+        "Africa/Libreville": "Gabon", "Africa/Brazzaville": "Congo",
+        "Africa/Kinshasa": "DR Congo", "Africa/Lubumbashi": "DR Congo",
+        "Africa/Luanda": "Angola", "Africa/Maputo": "Mozambique",
+        "Africa/Harare": "Zimbabwe", "Africa/Lusaka": "Zambia",
+        "Africa/Lilongwe": "Malawi", "Africa/Dar_es_Salaam": "Tanzania",
+        "Africa/Kampala": "Uganda", "Africa/Kigali": "Rwanda",
+        "Africa/Bujumbura": "Burundi", "Africa/Mogadishu": "Somalia",
+        "Africa/Djibouti": "Djibouti", "Africa/Asmara": "Eritrea",
+        "Africa/Windhoek": "Namibia", "Africa/Gaborone": "Botswana",
+        "Africa/Maseru": "Lesotho", "Africa/Mbabane": "Eswatini",
+        "Africa/Lome": "Togo", "Africa/Porto-Novo": "Benin",
+        "Africa/Sao_Tome": "São Tomé & Príncipe",
+        "Africa/Malabo": "Equatorial Guinea",
+        "Indian/Antananarivo": "Madagascar", "Indian/Mauritius": "Mauritius",
+        "Indian/Reunion": "Réunion", "Indian/Mayotte": "Mayotte",
+        "Indian/Comoro": "Comoros", "Africa/El_Aaiun": "Western Sahara",
+        "Atlantic/Cape_Verde": "Cape Verde",
+        // --- Oceania ---
+        "Australia/Sydney": "Australia", "Australia/Melbourne": "Australia",
+        "Australia/Brisbane": "Australia", "Australia/Perth": "Australia",
+        "Australia/Adelaide": "Australia", "Australia/Hobart": "Australia",
+        "Australia/Darwin": "Australia", "Australia/Lindeman": "Australia",
+        "Australia/Lord_Howe": "Australia", "Australia/Eucla": "Australia",
+        "Australia/Broken_Hill": "Australia", "Australia/Currie": "Australia",
+        "Pacific/Auckland": "New Zealand", "Pacific/Chatham": "New Zealand",
+        "Pacific/Fiji": "Fiji", "Pacific/Tongatapu": "Tonga",
+        "Pacific/Apia": "Samoa", "Pacific/Port_Moresby": "Papua New Guinea",
+        "Pacific/Bougainville": "Papua New Guinea",
+        "Pacific/Guadalcanal": "Solomon Islands", "Pacific/Noumea": "New Caledonia",
+        "Pacific/Efate": "Vanuatu", "Pacific/Tarawa": "Kiribati",
+        "Pacific/Majuro": "Marshall Islands", "Pacific/Kwajalein": "Marshall Islands",
+        "Pacific/Funafuti": "Tuvalu", "Pacific/Nauru": "Nauru",
+        "Pacific/Palau": "Palau", "Pacific/Guam": "Guam",
+        "Pacific/Pago_Pago": "American Samoa", "Pacific/Rarotonga": "Cook Islands",
+        "Pacific/Niue": "Niue", "Pacific/Fakaofo": "Tokelau",
+        "Pacific/Tahiti": "French Polynesia", "Pacific/Gambier": "French Polynesia",
+        "Pacific/Marquesas": "French Polynesia", "Pacific/Pitcairn": "Pitcairn Islands",
+        "Pacific/Norfolk": "Norfolk Island", "Pacific/Wallis": "Wallis & Futuna",
+        "Pacific/Kosrae": "Micronesia", "Pacific/Chuuk": "Micronesia",
+        "Pacific/Pohnpei": "Micronesia", "Indian/Christmas": "Christmas Island",
+        "Indian/Cocos": "Cocos Islands",
+        // --- Atlantic & Other ---
+        "Atlantic/Bermuda": "Bermuda", "Atlantic/Azores": "Portugal",
+        "Atlantic/Madeira": "Portugal", "Atlantic/Canary": "Spain",
+        "Atlantic/South_Georgia": "South Georgia", "Indian/Kerguelen": "TAAF",
+        "Indian/Chagos": "British Indian Ocean", "Antarctica/McMurdo": "Antarctica"
+    };
+
+    // Try Intl.DisplayNames for region names, with manual map fallback
+    let regionNames = null;
+    try {
+        regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
+    } catch (e) {
+        console.warn('Intl.DisplayNames not supported, using manual map only.');
+    }
+
+    function getCountryForTimezone(tz) {
+        if (manualCountryMap[tz]) return manualCountryMap[tz];
+
+        if (regionNames) {
+            try {
+                const parts = tz.split('/');
+                const resolved = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'long' })
+                    .formatToParts(new Date())
+                    .find(p => p.type === 'timeZoneName');
+                if (resolved && resolved.value) {
+                    const longName = resolved.value;
+                    if (parts.length === 3) return parts[1].replace(/_/g, ' ');
+                    return parts[parts.length - 1].replace(/_/g, ' ');
+                }
+            } catch (e) {}
+        }
+
+        const parts = tz.split('/');
+        if (parts.length === 3) return parts[1].replace(/_/g, ' ');
+        return parts[parts.length - 1].replace(/_/g, ' ');
+    }
+
+    // --- State Variables ---
+    let atomicOffsetMs = 0;
+    let addedDays = 0;
+    let selectedTimezone = localStorage.getItem('atomicClockDefaultTZ') || 'Asia/Manila';
+    let clockIntervalId = null;
+    let resyncIntervalId = null;
+    let draggedCityId = null;
+
+    const RESYNC_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+
+    const defaultCities = [
+        { id: "la", name: "Los Angeles", tz: "America/Los_Angeles" },
+        { id: "aus", name: "Austin", tz: "America/Chicago" },
+        { id: "ny", name: "New York", tz: "America/New_York" },
+        { id: "rio", name: "Rio de Janeiro", tz: "America/Sao_Paulo" },
+        { id: "lon", name: "London", tz: "Europe/London" },
+        { id: "par", name: "Paris", tz: "Europe/Paris" },
+        { id: "waw", name: "Warsaw", tz: "Europe/Warsaw" },
+        { id: "dxb", name: "Dubai", tz: "Asia/Dubai" },
+        { id: "pun", name: "Pune", tz: "Asia/Kolkata" },
+        { id: "mnl", name: "Manila", tz: "Asia/Manila" },
+        { id: "tyo", name: "Tokyo", tz: "Asia/Tokyo" },
+        { id: "syd", name: "Sydney", tz: "Australia/Sydney" }
+    ];
+
+    let customCities = [];
+    try {
+        const stored = JSON.parse(localStorage.getItem('atomicClockCustomCities') || '[]');
+        customCities = Array.isArray(stored) ? stored.filter(validateCityObject) : [];
+    } catch (e) {
+        console.warn('Failed to parse custom cities from localStorage, resetting.', e);
+        customCities = [];
+    }
+
+    let removedDefaults = [];
+    try {
+        removedDefaults = JSON.parse(localStorage.getItem('atomicClockRemovedDefaults') || '[]');
+    } catch(e) {}
+
+    function getActiveDefaults() {
+        return defaultCities.filter(c => !removedDefaults.includes(sanitizeId(c.id)));
+    }
+
+    let cities = [...getActiveDefaults(), ...customCities];
+    
+    // Sort based on saved order if it exists
+    try {
+        const displayOrder = JSON.parse(localStorage.getItem('atomicClockDisplayOrder') || '[]');
+        if (displayOrder.length > 0) {
+            cities.sort((a, b) => {
+                const idxA = displayOrder.indexOf(sanitizeId(a.id));
+                const idxB = displayOrder.indexOf(sanitizeId(b.id));
+                if (idxA === -1 && idxB === -1) return 0;
+                if (idxA === -1) return 1;
+                if (idxB === -1) return -1;
+                return idxA - idxB;
+            });
+        }
+    } catch(e) {}
+
+    // --- Imported JSON Validation ---
+    function validateCityObject(city) {
+        if (!city || typeof city !== 'object') return false;
+        if (typeof city.id !== 'string' || city.id.length === 0 || city.id.length > 100) return false;
+        if (typeof city.name !== 'string' || city.name.length === 0 || city.name.length > 100) return false;
+        if (typeof city.tz !== 'string' || city.tz.length === 0 || city.tz.length > 100) return false;
+
+        // Validate that the timezone is actually recognized
+        try {
+            new Intl.DateTimeFormat('en-US', { timeZone: city.tz }).format(new Date());
+        } catch (e) {
+            console.warn(`Invalid timezone "${city.tz}" in city "${city.name}", skipping.`);
+            return false;
+        }
+        return true;
+    }
+
+    // --- DOM Elements ---
+    const mainTimeEl = document.getElementById('main-time');
+    const mainDateEl = document.getElementById('main-date');
+    const mainDstBadge = document.getElementById('main-dst-badge');
+    const syncStatusEl = document.getElementById('sync-status');
+    const discrepancyEl = document.getElementById('discrepancy-status');
+    const resyncBtn = document.getElementById('resync-btn');
+    const timezoneSelect = document.getElementById('timezone-select');
+    const mainTzDatalist = document.getElementById('main-tz-list');
+    const tzDatalist = document.getElementById('tz-list');
+    const setDefaultBtn = document.getElementById('set-default-btn');
+    const addDaysInput = document.getElementById('add-days');
+    const clockGrid = document.getElementById('clock-grid');
+
+    // --- City Aliases ---
+    const cityAliases = {
+        "Pune": "Asia/Kolkata", "Mumbai": "Asia/Kolkata", "Delhi": "Asia/Kolkata",
+        "New Delhi": "Asia/Kolkata", "Bangalore": "Asia/Kolkata", "Bengaluru": "Asia/Kolkata",
+        "Chennai": "Asia/Kolkata", "Hyderabad": "Asia/Kolkata", "Ahmedabad": "Asia/Kolkata",
+        "Jaipur": "Asia/Kolkata", "Lucknow": "Asia/Kolkata", "Chandigarh": "Asia/Kolkata",
+        "Kochi": "Asia/Kolkata", "Goa": "Asia/Kolkata", "Surat": "Asia/Kolkata",
+        "Indore": "Asia/Kolkata", "Nagpur": "Asia/Kolkata", "Visakhapatnam": "Asia/Kolkata",
+        "Beijing": "Asia/Shanghai", "Shenzhen": "Asia/Shanghai", "Guangzhou": "Asia/Shanghai",
+        "Hangzhou": "Asia/Shanghai", "Nanjing": "Asia/Shanghai", "Wuhan": "Asia/Shanghai",
+        "Chengdu": "Asia/Shanghai", "Xi'an": "Asia/Shanghai", "Tianjin": "Asia/Shanghai",
+        "Osaka": "Asia/Tokyo", "Kyoto": "Asia/Tokyo", "Yokohama": "Asia/Tokyo",
+        "Nagoya": "Asia/Tokyo", "Sapporo": "Asia/Tokyo", "Fukuoka": "Asia/Tokyo",
+        "San Francisco": "America/Los_Angeles", "Seattle": "America/Los_Angeles",
+        "Las Vegas": "America/Los_Angeles", "Portland": "America/Los_Angeles",
+        "Miami": "America/New_York", "Boston": "America/New_York",
+        "Atlanta": "America/New_York", "Washington DC": "America/New_York",
+        "Philadelphia": "America/New_York", "Dallas": "America/Chicago",
+        "Houston": "America/Chicago", "Austin": "America/Chicago",
+        "San Antonio": "America/Chicago", "Minneapolis": "America/Chicago",
+        "Manchester": "Europe/London", "Birmingham": "Europe/London",
+        "Edinburgh": "Europe/London", "Glasgow": "Europe/London", "Liverpool": "Europe/London",
+        "Munich": "Europe/Berlin", "Frankfurt": "Europe/Berlin", "Hamburg": "Europe/Berlin",
+        "Cologne": "Europe/Berlin", "Stuttgart": "Europe/Berlin",
+        "Rio de Janeiro": "America/Sao_Paulo", "Brasilia": "America/Sao_Paulo",
+        "Salvador": "America/Sao_Paulo", "Belo Horizonte": "America/Sao_Paulo",
+        "Canberra": "Australia/Sydney", "Gold Coast": "Australia/Brisbane",
+        "Abu Dhabi": "Asia/Dubai", "Mecca": "Asia/Riyadh", "Medina": "Asia/Riyadh",
+        "Jeddah": "Asia/Riyadh", "Doha": "Asia/Qatar", "Tel Aviv": "Asia/Jerusalem",
+        "Busan": "Asia/Seoul", "Incheon": "Asia/Seoul",
+        "Cebu": "Asia/Manila", "Davao": "Asia/Manila",
+        "Barcelona": "Europe/Madrid", "Milan": "Europe/Rome", "Florence": "Europe/Rome",
+        "St. Petersburg": "Europe/Moscow", "Zurich": "Europe/Zurich",
+        "Geneva": "Europe/Zurich", "Johannesburg": "Africa/Johannesburg",
+        "Cape Town": "Africa/Johannesburg", "Durban": "Africa/Johannesburg",
+        "Marrakech": "Africa/Casablanca", "Hanoi": "Asia/Ho_Chi_Minh",
+        "Kuala Lumpur": "Asia/Kuala_Lumpur", "Bali": "Asia/Makassar"
+    };
+
+    // --- Timezone Dropdown ---
+    function initTimezoneDropdown() {
+        const allZones = (Intl.supportedValuesOf && Intl.supportedValuesOf('timeZone'))
+            || ["UTC", "America/Los_Angeles", "America/New_York", "Europe/London", "Asia/Manila"];
+
+        mainTzDatalist.innerHTML = '';
+        tzDatalist.innerHTML = '';
+
+        allZones.forEach(zone => {
+            const country = getCountryForTimezone(zone);
+            const city = zone.split('/').pop().replace(/_/g, ' ');
+            const displayStr = country === city
+                ? `${country} (${zone})`
+                : `${country} - ${city} (${zone})`;
+
+            const optMain = document.createElement('option');
+            optMain.value = displayStr;
+            mainTzDatalist.appendChild(optMain);
+
+            const optAdd = document.createElement('option');
+            optAdd.value = displayStr;
+            tzDatalist.appendChild(optAdd);
+        });
+
+        // Inject city aliases as additional dropdown options
+        Object.entries(cityAliases).forEach(([cityName, tz]) => {
+            const country = getCountryForTimezone(tz);
+            const displayStr = `${country} - ${cityName} (${tz})`;
+
+            const optMain = document.createElement('option');
+            optMain.value = displayStr;
+            mainTzDatalist.appendChild(optMain);
+
+            const optAdd = document.createElement('option');
+            optAdd.value = displayStr;
+            tzDatalist.appendChild(optAdd);
+        });
+
+        const matchedOpt = Array.from(mainTzDatalist.options).find(opt => opt.value.includes(`(${selectedTimezone})`));
+        timezoneSelect.value = matchedOpt ? matchedOpt.value : selectedTimezone;
+    }
+
+    function parseTzFromInput(inputValue) {
+        const match = inputValue.match(/\(([^)]+)\)$/);
+        return match ? match[1] : inputValue;
+    }
+
+    // --- DST Calculation ---
+    function getTzOffsetMinutes(tz, date) {
+        try {
+            const parts = new Intl.DateTimeFormat('en-US', {
+                timeZone: tz, timeZoneName: 'shortOffset', hour12: false
+            }).formatToParts(date);
+            const tzPart = parts.find(p => p.type === 'timeZoneName').value;
+            if (tzPart === 'GMT') return 0;
+            const match = tzPart.match(/GMT([+-])(\d+)(?::(\d+))?/);
+            if (!match) return 0;
+            return (match[1] === '+' ? 1 : -1) * (parseInt(match[2], 10) * 60 + (match[3] ? parseInt(match[3], 10) : 0));
+        } catch (e) {
+            console.warn(`Failed to get offset for timezone "${tz}":`, e.message);
+            return 0;
+        }
+    }
+
+    function getDstStatus(tz, date) {
+        try {
+            const year = date.getFullYear();
+            const janOff = getTzOffsetMinutes(tz, new Date(year, 0, 1));
+            const julOff = getTzOffsetMinutes(tz, new Date(year, 6, 1));
+            
+            // If offset doesn't change, they don't observe DST
+            if (janOff === julOff) return 'NA';
+            
+            // If it does change, the larger offset is DST (summer time)
+            const currentOff = getTzOffsetMinutes(tz, date);
+            return currentOff === Math.max(janOff, julOff) ? 'ACTIVE' : 'INACTIVE';
+        } catch (e) {
+            console.warn(`DST check failed for timezone "${tz}":`, e.message);
+            return 'NA';
+        }
+    }
+
+    // --- Render Clock Grid ---
+    function renderClockGrid() {
+        clockGrid.innerHTML = '';
+        cities.forEach(city => {
+            const safeId = sanitizeId(city.id);
+            const card = document.createElement('div');
+            card.className = 'clock-card';
+
+            card.innerHTML = `
+                <button class="card-remove-btn" data-id="${safeId}" title="Remove Clock" aria-label="Remove ${sanitizeHTML(city.name)}">×</button>
+                <div class="city-name" title="${sanitizeHTML(city.name)}">${sanitizeHTML(city.name)}</div>
+                <div class="city-time" id="time-${safeId}">--:--</div>
+                <div class="city-date" id="date-${safeId}">Loading Date...</div>
+                <div id="dst-${safeId}" class="dst-badge city-dst">DST: N/A</div>
+            `;
+            
+            card.setAttribute('draggable', true);
+            
+            // --- Drag and Drop Handlers ---
+            card.addEventListener('dragstart', (e) => {
+                draggedCityId = city.id;
+                setTimeout(() => card.classList.add('dragging'), 0);
+            });
+            
+            card.addEventListener('dragend', () => {
+                draggedCityId = null;
+                card.classList.remove('dragging');
+            });
+            
+            card.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                if (draggedCityId === city.id) return;
+                card.classList.add('drag-over');
+            });
+            
+            card.addEventListener('dragleave', () => {
+                card.classList.remove('drag-over');
+            });
+            
+            card.addEventListener('drop', (e) => {
+                e.preventDefault();
+                card.classList.remove('drag-over');
+                if (!draggedCityId || draggedCityId === city.id) return;
+                
+                const draggedIndex = cities.findIndex(c => c.id === draggedCityId);
+                const targetIndex = cities.findIndex(c => c.id === city.id);
+                
+                if (draggedIndex > -1 && targetIndex > -1) {
+                    const [draggedCity] = cities.splice(draggedIndex, 1);
+                    cities.splice(targetIndex, 0, draggedCity);
+                    
+                    const displayOrder = cities.map(c => sanitizeId(c.id));
+                    localStorage.setItem('atomicClockDisplayOrder', JSON.stringify(displayOrder));
+                    renderClockGrid();
+                }
+            });
+            
+            // --- Click to Set Default ---
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('.card-remove-btn')) return; // Ignore delete clicks
+                
+                // Set as main clock
+                selectedTimezone = city.tz;
+                localStorage.setItem('atomicClockDefaultTZ', selectedTimezone);
+                
+                // Sync the main dropdown UI if it exists inside the map
+                const matchedOpt = Array.from(mainTzDatalist.options).find(opt => opt.value.includes(`(${selectedTimezone})`));
+                if (matchedOpt) timezoneSelect.value = matchedOpt.value;
+                
+                updateClocks();
+                
+                // Visual feedback ping
+                card.style.borderColor = 'var(--success)';
+                setTimeout(() => card.style.borderColor = '', 800);
+            });
+
+            clockGrid.appendChild(card);
+        });
+
+        // Attach listeners for remove buttons
+        const removeBtns = clockGrid.querySelectorAll('.card-remove-btn');
+        removeBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const idToRemove = e.currentTarget.getAttribute('data-id');
+                cities = cities.filter(c => sanitizeId(c.id) !== idToRemove);
+                
+                const defaultIds = defaultCities.map(d => sanitizeId(d.id));
+                customCities = cities.filter(c => !defaultIds.includes(sanitizeId(c.id)));
+                localStorage.setItem('atomicClockCustomCities', JSON.stringify(customCities));
+                
+                const removedDefaults = JSON.parse(localStorage.getItem('atomicClockRemovedDefaults') || '[]');
+                if (defaultIds.includes(idToRemove) && !removedDefaults.includes(idToRemove)) {
+                    removedDefaults.push(idToRemove);
+                    localStorage.setItem('atomicClockRemovedDefaults', JSON.stringify(removedDefaults));
+                }
+                
+                renderClockGrid();
+            });
+        });
+
+        updateClocks();
+    }
+
+    async function syncAtomicTime() {
+        resyncBtn.disabled = true;
+        resyncBtn.textContent = '↻ Syncing...';
+        syncStatusEl.textContent = 'Contacting Time Servers...';
+        syncStatusEl.style.color = 'var(--accent)';
+        discrepancyEl.textContent = 'Calculating hardware offset...';
+        discrepancyEl.style.color = 'var(--text-muted)';
+
+        let atomicTimeMs = null;
+        try {
+            const response = await fetch('https://worldtimeapi.org/api/timezone/Etc/UTC');
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            atomicTimeMs = new Date(data.datetime).getTime();
+            syncStatusEl.textContent = 'Synced with WorldTimeAPI.org';
+        } catch (err1) {
+            console.warn('WorldTimeAPI failed:', err1.message);
+            try {
+                const response2 = await fetch('https://timeapi.io/api/Time/current/zone?timeZone=UTC');
+                if (!response2.ok) throw new Error(`HTTP ${response2.status}`);
+                const data2 = await response2.json();
+                atomicTimeMs = new Date(data2.dateTime + 'Z').getTime();
+                syncStatusEl.textContent = 'Synced with TimeAPI.io';
+            } catch (err2) {
+                console.warn('TimeAPI.io also failed:', err2.message);
+            }
+        }
+
+        try {
+            if (!atomicTimeMs) throw new Error('No atomic time source available');
+            const localSystemTime = Date.now();
+            atomicOffsetMs = atomicTimeMs - localSystemTime;
+            const discrepancySecs = Math.abs(atomicOffsetMs) / 1000;
+
+            syncStatusEl.style.color = 'var(--success)';
+            if (atomicOffsetMs > 50) {
+                discrepancyEl.textContent = `Local clock is ${discrepancySecs.toFixed(3)}s behind atomic time.`;
+                discrepancyEl.style.color = 'var(--dst-color)';
+            } else if (atomicOffsetMs < -50) {
+                discrepancyEl.textContent = `Local clock is ${discrepancySecs.toFixed(3)}s ahead of atomic time.`;
+                discrepancyEl.style.color = 'var(--dst-color)';
+            } else {
+                discrepancyEl.textContent = 'Local clock is perfectly synced.';
+                discrepancyEl.style.color = 'var(--success)';
+            }
+        } catch (error) {
+            console.warn('Time sync resolution failed:', error.message);
+            syncStatusEl.textContent = 'Connection Failed. Using Local Time';
+            syncStatusEl.style.color = 'var(--danger)';
+            discrepancyEl.textContent = 'Discrepancy: Unknown (Offline / Blocked)';
+            discrepancyEl.style.color = 'var(--danger)';
+        } finally {
+            resyncBtn.disabled = false;
+            resyncBtn.textContent = '↻ Re-sync Now';
+        }
+    }
+
+    function updateClocks() {
+        const msInADay = 86400000;
+        const now = new Date(Date.now() + atomicOffsetMs + (addedDays * msInADay));
+
+        // Main Clock Update
+        try {
+            const timeOpts = { timeZone: selectedTimezone, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
+            const dateOpts = { timeZone: selectedTimezone, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            mainTimeEl.textContent = new Intl.DateTimeFormat('en-US', timeOpts).format(now);
+            mainDateEl.textContent = new Intl.DateTimeFormat('en-US', dateOpts).format(now);
+            
+            const mainStatus = getDstStatus(selectedTimezone, now);
+            mainDstBadge.textContent = 'DST: ' + (mainStatus === 'NA' ? 'N/A' : (mainStatus === 'ACTIVE' ? 'Active' : 'Inactive'));
+            mainDstBadge.className = `dst-badge dst-${mainStatus.toLowerCase()}`;
+            mainDstBadge.style.display = 'inline-block';
+        } catch (e) {
+            console.warn(`Failed to update main clock for "${selectedTimezone}":`, e.message);
+        }
+
+        // City Map Clocks Update
+        cities.forEach(city => {
+            try {
+                const safeId = sanitizeId(city.id);
+                const timeOpts = { timeZone: city.tz, hour: '2-digit', minute: '2-digit', hour12: false };
+                const timeStr = new Intl.DateTimeFormat('en-US', timeOpts).format(now);
+                const dateOpts = { timeZone: city.tz, weekday: 'short', month: 'short', day: 'numeric' };
+                const dateStr = new Intl.DateTimeFormat('en-US', dateOpts).format(now);
+
+                const cityTimeEl = document.getElementById(`time-${safeId}`);
+                const cityDateEl = document.getElementById(`date-${safeId}`);
+                const cityDstEl = document.getElementById(`dst-${safeId}`);
+
+                if (cityTimeEl) cityTimeEl.textContent = timeStr;
+                if (cityDateEl) cityDateEl.textContent = dateStr;
+                if (cityDstEl) {
+                    const status = getDstStatus(city.tz, now);
+                    cityDstEl.textContent = 'DST: ' + (status === 'NA' ? 'N/A' : (status === 'ACTIVE' ? 'Active' : 'Inactive'));
+                    cityDstEl.className = `dst-badge city-dst dst-${status.toLowerCase()}`;
+                    cityDstEl.style.display = 'inline-block';
+                }
+            } catch (e) {
+                console.warn(`Failed to update clock for city "${city.name}" (${city.tz}):`, e.message);
+            }
+        });
+    }
+
+    // --- Second-Boundary Aligned Clock Tick ---
+    function scheduleNextTick() {
+        const now = Date.now() + atomicOffsetMs;
+        const msUntilNextSecond = 1000 - (now % 1000);
+        clockIntervalId = setTimeout(() => {
+            updateClocks();
+            scheduleNextTick();
+        }, msUntilNextSecond);
+    }
+
+    // --- Interactivity ---
+    document.getElementById('add-city-btn').addEventListener('click', () => {
+        const name = document.getElementById('custom-name').value.trim();
+        const rawTz = document.getElementById('custom-tz').value.trim();
+        const tz = parseTzFromInput(rawTz);
+
+        if (!name || !tz) {
+            alert('Please fill in both fields.');
+            return;
+        }
+        if (name.length > 100) {
+            alert('Display name is too long (max 100 characters).');
+            return;
+        }
+        try {
+            new Intl.DateTimeFormat('en-US', { timeZone: tz }).format(new Date());
+        } catch (e) {
+            alert(`Invalid Time Zone: "${tz}".`);
+            return;
+        }
+
+        const newCity = { id: 'custom-' + Date.now(), name, tz };
+        cities.push(newCity);
+        customCities.push(newCity);
+        localStorage.setItem('atomicClockCustomCities', JSON.stringify(customCities));
+        renderClockGrid();
+
+        document.getElementById('custom-name').value = '';
+        document.getElementById('custom-tz').value = '';
+    });
+
+    // Export with safe URL revocation
+    document.getElementById('export-btn').addEventListener('click', () => {
+        if (customCities.length === 0) {
+            alert("You don't have any custom cities to export yet!");
+            return;
+        }
+        const blob = new Blob([JSON.stringify(customCities, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'world_clock_backup.json';
+        a.click();
+        // Delay revocation to ensure the download starts
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+
+    // Import with full validation
+    const importFileInput = document.getElementById('import-file');
+    document.getElementById('import-btn').addEventListener('click', () => { importFileInput.click(); });
+    importFileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const importedData = JSON.parse(event.target.result);
+                if (!Array.isArray(importedData)) throw new Error('Imported data is not an array.');
+
+                // Validate each city object
+                const validCities = importedData.filter(city => {
+                    const isValid = validateCityObject(city);
+                    if (!isValid) console.warn('Skipping invalid city object during import:', city);
+                    return isValid;
+                });
+
+                if (validCities.length === 0) {
+                    alert('No valid city entries found in the import file.');
+                    return;
+                }
+
+                customCities = [...customCities, ...validCities];
+                // Deduplicate by ID
+                const uniqueIds = new Set();
+                customCities = customCities.filter(city => {
+                    if (uniqueIds.has(city.id)) return false;
+                    uniqueIds.add(city.id);
+                    return true;
+                });
+
+                cities = [...getActiveDefaults(), ...customCities];
+                localStorage.setItem('atomicClockCustomCities', JSON.stringify(customCities));
+                renderClockGrid();
+                alert(`Successfully imported ${validCities.length} city/cities!`);
+            } catch (err) {
+                console.warn('Import failed:', err.message);
+                alert("Error importing file. Make sure it's a valid JSON backup file.");
+            }
+            importFileInput.value = '';
+        };
+        reader.readAsText(file);
+    });
+
+    // Clear without full page reload
+    document.getElementById('clear-btn').addEventListener('click', () => {
+        if (confirm('Are you sure you want to restore defaults and remove all custom clocks?')) {
+            customCities = [];
+            removedDefaults = [];
+            localStorage.setItem('atomicClockCustomCities', JSON.stringify(customCities));
+            localStorage.setItem('atomicClockRemovedDefaults', JSON.stringify(removedDefaults));
+            cities = [...getActiveDefaults(), ...customCities];
+            renderClockGrid();
+        }
+    });
+
+    resyncBtn.addEventListener('click', syncAtomicTime);
+
+    // Timezone selection handler
+    timezoneSelect.addEventListener('change', (e) => {
+        const inputTz = parseTzFromInput(e.target.value);
+        try {
+            new Intl.DateTimeFormat('en-US', { timeZone: inputTz });
+            selectedTimezone = inputTz;
+            timezoneSelect.style.borderColor = 'var(--border-color)';
+            updateClocks();
+        } catch (err) {
+            timezoneSelect.style.borderColor = 'var(--danger)';
+        }
+    });
+
+    setDefaultBtn.addEventListener('click', () => {
+        localStorage.setItem('atomicClockDefaultTZ', selectedTimezone);
+        const originalText = setDefaultBtn.textContent;
+        setDefaultBtn.textContent = '✓ Saved!';
+        setDefaultBtn.style.backgroundColor = 'var(--accent)';
+        setDefaultBtn.style.color = 'var(--card-bg)';
+        setTimeout(() => {
+            setDefaultBtn.textContent = originalText;
+            setDefaultBtn.style.backgroundColor = 'transparent';
+            setDefaultBtn.style.color = 'var(--accent)';
+        }, 1500);
+    });
+
+    addDaysInput.addEventListener('input', (e) => {
+        addedDays = parseInt(e.target.value) || 0;
+        updateClocks();
+    });
+
+    // --- App Boot ---
+    initTimezoneDropdown();
+    renderClockGrid();
+    syncAtomicTime().then(() => {
+        updateClocks();
+        // Aligned clock tick instead of raw setInterval
+        scheduleNextTick();
+        // Auto re-sync every 10 minutes
+        resyncIntervalId = setInterval(syncAtomicTime, RESYNC_INTERVAL_MS);
+    });
+
+})();
+    </script>
+</body>
+
+</html>
+
